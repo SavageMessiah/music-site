@@ -37,7 +37,7 @@
                [:input#filter {:type "text"}]
                [:button#clear "clear"]]
                [:main.container
-                (for [{:keys [title time mp3-name tags desc]} tracks
+                (for [{:keys [title time mp3-name tags desc]} (->> tracks (sort-by :time) reverse)
                       :let [tags (->> tags (map name) (map #(str "#" %)) (str/join " "))
                             mp3-path (str "tracks/" mp3-name)]]
                   [:article.track {:id mp3-name
