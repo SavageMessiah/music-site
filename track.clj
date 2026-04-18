@@ -84,15 +84,19 @@
        (map keyword)
        set))
 
-(defn fetch-tracks []
-  (println "Fetching remote tracks.edn")
-  (->> (http/get "http://imayeti.com/music/tracks.edn")
-       :body
+(defn read-tracks [tracks-str]
+  (->> tracks-str
        edn/read-string
        (mapv (fn [track]
                (-> track
                    (update :time #(Instant/ofEpochMilli %))
                    (update :tags fix-tags))))))
+
+(defn fetch-tracks []
+  (println "Fetching remote tracks.edn")
+  (->> (http/get "http://imayeti.com/music/tracks.edn")
+       :body
+       read-tracks))
 
 (defn tracks->tags [tracks]
   (->> tracks
@@ -110,7 +114,7 @@
     (str/trim out)))
 
 (defn pick-file [dir]
-  (->> (fs/glob dir "*.wav")
+  (->> (fs/glob dir "**.wav")
        sort
        reverse
        fzf
@@ -215,12 +219,16 @@
     @(p/shell {:cmd cmd})))
 
 (defn command [body]
-  (fn [{{:keys [dry-run] :as opts} :opts}]
+  (fn [{{:keys [dry-run tracks] :as opts} :opts}]
     (when dry-run
       (println "dry run, not uploading"))
+    (when tracks
+      (println "loading tracks from" tracks))
     (ensure-deps)
     (fs/with-temp-dir [work-dir {}]
-      (let [old-tracks (future (fetch-tracks))
+      (let [old-tracks (future (if (string? tracks)
+                                 (-> tracks slurp read-tracks)
+                                 (fetch-tracks)))
             new-tracks (body work-dir old-tracks opts)]
         (prep-for-upload work-dir new-tracks)
         (upload work-dir dry-run)))))
@@ -242,7 +250,8 @@
   (println "editing an existing track")
   (edit-existing-track work-dir @tracks))
 
-(def common-spec {:dry-run {:desc "Don't upload anything"}})
+(def common-spec {:dry-run {:desc "Don't upload anything"}
+                  :tracks {:desc "Use this tracks.edn instead of downloading it."}})
 
 (def new-spec (merge common-spec {:dir {:ref "<dir>"
                                         :default (:recording-dir conf)
